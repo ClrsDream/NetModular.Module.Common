@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using NetModular.Lib.Data.Abstractions;
+using NetModular.Lib.Data.Abstractions.Enums;
 using NetModular.Lib.Data.Core;
 using NetModular.Lib.Data.Query;
 using NetModular.Module.Admin.Domain.Account;
@@ -37,6 +38,26 @@ namespace NetModular.Module.Common.Infrastructure.Repositories.SqlServer
             return list;
         }
 
+        public Task<IList<DictItemEntity>> QueryAll(DictItemQueryModel model)
+        {
+            var paging = model.Paging();
+            var query = Db.Find();
+            query.WhereNotNull(model.GroupCode, m => m.GroupCode == model.GroupCode);
+            query.WhereNotNull(model.DictCode, m => m.DictCode == model.DictCode);
+            query.WhereNotNull(model.Name, m => m.Name.Contains(model.Name));
+            query.WhereNotNull(model.Value, m => m.Value.Contains(model.Value));
+
+            var joinQuery = query.LeftJoin<AccountEntity>((x, y) => x.CreatedBy == y.Id)
+                .Select((x, y) => new { x, Creator = y.Name });
+
+            if (!paging.OrderBy.Any())
+            {
+                joinQuery.OrderBy((x, y) => x.Sort);
+            }
+
+            return joinQuery.ToListAsync();
+        }
+
         public Task<IList<DictItemEntity>> QueryAll(string groupCode, string dictCode)
         {
             var query = Db.Find(m => m.GroupCode == groupCode && m.DictCode == dictCode);
@@ -47,7 +68,7 @@ namespace NetModular.Module.Common.Infrastructure.Repositories.SqlServer
         public Task<bool> Exists(DictItemEntity entity)
         {
             return Db.Find(m => m.GroupCode == entity.GroupCode && m.DictCode == entity.DictCode)
-                .Where(m => m.Name == entity.Name || m.Value == entity.Value)
+                .Where(m => m.Value == entity.Value)
                 .WhereNotNull(entity.Id > 0, m => m.Id != entity.Id).ExistsAsync();
         }
 
@@ -68,6 +89,20 @@ namespace NetModular.Module.Common.Infrastructure.Repositories.SqlServer
         public Task<bool> ExistsChild(int id)
         {
             return Db.Find(m => m.ParentId == id).ExistsAsync();
+        }
+
+        public Task<DictItemEntity> Get(string groupCode, string dictCode, string value)
+        {
+            return GetAsync(m => m.GroupCode == groupCode && m.DictCode == dictCode && m.Value == value);
+        }
+
+        public Task<DictItemEntity> GetParent(string groupCode, string dictCode, string value)
+        {
+            var subQuery = Db.Find(m => m.GroupCode == groupCode && m.DictCode == dictCode && m.Value == value)
+                .Select(m => m.ParentId);
+
+            return Db.Find(m => m.GroupCode == groupCode && m.DictCode == dictCode)
+                 .Where(m => m.Id, QueryOperator.Equal, subQuery).FirstAsync();
         }
     }
 }

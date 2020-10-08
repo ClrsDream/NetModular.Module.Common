@@ -2,9 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AutoMapper;
-using Microsoft.Extensions.Options;
 using NetModular.Lib.Cache.Abstractions;
-using NetModular.Lib.Utils.Core.Extensions;
+using NetModular.Lib.Config.Abstractions;
 using NetModular.Lib.Utils.Core.Result;
 using NetModular.Module.Common.Application.DictItemService.ResultModels;
 using NetModular.Module.Common.Application.DictService.ViewModels;
@@ -12,7 +11,6 @@ using NetModular.Module.Common.Domain.Dict;
 using NetModular.Module.Common.Domain.Dict.Models;
 using NetModular.Module.Common.Domain.DictItem;
 using NetModular.Module.Common.Infrastructure;
-using NetModular.Module.Common.Infrastructure.Options;
 
 namespace NetModular.Module.Common.Application.DictService
 {
@@ -21,16 +19,16 @@ namespace NetModular.Module.Common.Application.DictService
         private readonly IMapper _mapper;
         private readonly IDictRepository _repository;
         private readonly IDictItemRepository _itemRepository;
-        private readonly CommonOptions _options;
         private readonly ICacheHandler _cacheHandler;
+        private readonly IConfigProvider _configProvider;
 
-        public DictService(IMapper mapper, IDictRepository repository, IOptionsMonitor<CommonOptions> optionsMonitor, ICacheHandler cacheHandler, IDictItemRepository itemRepository)
+        public DictService(IMapper mapper, IDictRepository repository, ICacheHandler cacheHandler, IDictItemRepository itemRepository, IConfigProvider configProvider)
         {
             _mapper = mapper;
             _repository = repository;
             _cacheHandler = cacheHandler;
             _itemRepository = itemRepository;
-            _options = optionsMonitor.CurrentValue;
+            _configProvider = configProvider;
         }
 
         public async Task<IResultModel> Query(DictQueryModel model)
@@ -67,7 +65,7 @@ namespace NetModular.Module.Common.Application.DictService
             var result = await _repository.DeleteAsync(id);
             if (result)
             {
-                await _cacheHandler.RemoveAsync($"{CacheKeys.DictSelect}{entity.GroupCode.ToUpper()}_{entity.Code.ToUpper()}");
+                await _cacheHandler.RemoveAsync($"{CacheKeys.DICT_SELECT}:{entity.GroupCode.ToUpper()}_{entity.Code.ToUpper()}");
             }
             return ResultModel.Result(result);
         }
@@ -98,7 +96,7 @@ namespace NetModular.Module.Common.Application.DictService
             var result = await _repository.UpdateAsync(entity);
             if (result)
             {
-                await _cacheHandler.RemoveAsync($"{CacheKeys.DictSelect}{entity.GroupCode.ToUpper()}_{entity.Code.ToUpper()}");
+                await _cacheHandler.RemoveAsync($"{CacheKeys.DICT_SELECT}:{entity.GroupCode.ToUpper()}_{entity.Code.ToUpper()}");
             }
             return ResultModel.Result(result);
         }
@@ -108,13 +106,11 @@ namespace NetModular.Module.Common.Application.DictService
             if (group.IsNull() || code.IsNull())
                 return ResultModel.Failed("请指定分组和编码");
 
-            List<OptionResultModel> result;
-            var key = string.Format(CacheKeys.DictSelect, group.ToUpper(), code.ToUpper());
-            if (_options.DictCacheEnabled)
+            var config = _configProvider.Get<CommonConfig>();
+            var key = $"{CacheKeys.DICT_SELECT}:{group.ToUpper()}_{code.ToUpper()}";
+            if (config.DictCacheEnabled && _cacheHandler.TryGetValue(key, out List<OptionResultModel> result))
             {
-                result = await _cacheHandler.GetAsync<List<OptionResultModel>>(key);
-                if (result != null)
-                    return ResultModel.Success(result);
+                return ResultModel.Success(result);
             }
 
             var list = await _itemRepository.QueryChildren(group, code);
@@ -133,7 +129,7 @@ namespace NetModular.Module.Common.Application.DictService
                 }
             }).ToList();
 
-            if (_options.DictCacheEnabled)
+            if (config.DictCacheEnabled)
             {
                 await _cacheHandler.SetAsync(key, result);
             }
@@ -146,63 +142,51 @@ namespace NetModular.Module.Common.Application.DictService
             if (group.IsNull() || code.IsNull())
                 return ResultModel.Failed("请指定分组和编码");
 
-            TreeResultModel<string, DictItemTreeResultModel> tree;
-            var key = string.Format(CacheKeys.DictTree, group.ToUpper(), code.ToUpper());
-            if (_options.DictCacheEnabled)
+            var config = _configProvider.Get<CommonConfig>();
+            var key = $"{CacheKeys.DICT_TREE}:{group.ToUpper()}_{code.ToUpper()}";
+            if (config.DictCacheEnabled && _cacheHandler.TryGetValue(key, out TreeResultModel<int, DictItemTreeResultModel> root))
             {
-                tree = await _cacheHandler.GetAsync<TreeResultModel<string, DictItemTreeResultModel>>(key);
-                if (tree != null)
-                    return ResultModel.Success(tree);
+                return ResultModel.Success(root);
             }
 
             var dict = await _repository.GetByCode(group, code);
             if (dict == null)
                 return ResultModel.Failed("字典不存在");
 
-            tree = new TreeResultModel<string, DictItemTreeResultModel>
+            root = new TreeResultModel<int, DictItemTreeResultModel>
             {
-                Id = "",
+                Id = 0,
                 Label = dict.Name,
-                Path = { dict.Name },
-                Item = new DictItemTreeResultModel()
+                Item = new DictItemTreeResultModel
+                {
+                    Name = dict.Name
+                }
             };
-            var list = await _itemRepository.QueryAll(group, code);
-            tree.Children = ResolveTree(list, tree);
 
-            if (_options.DictCacheEnabled)
+            var all = await _itemRepository.QueryAll(group, code);
+            root.Children = ResolveTree(all);
+
+            if (config.DictCacheEnabled)
             {
-                await _cacheHandler.SetAsync(key, tree);
+                await _cacheHandler.SetAsync(key, root);
             }
 
-            return ResultModel.Success(tree);
+            return ResultModel.Success(root);
         }
 
-        private List<TreeResultModel<string, DictItemTreeResultModel>> ResolveTree(IList<DictItemEntity> all, TreeResultModel<string, DictItemTreeResultModel> parent)
+        private List<TreeResultModel<int, DictItemTreeResultModel>> ResolveTree(IList<DictItemEntity> all, int parentId = 0)
         {
-            return all.Where(m => m.ParentId == parent.Item.Id).OrderBy(m => m.Sort).Select(m =>
+            return all.Where(m => m.ParentId == parentId).OrderBy(m => m.Sort).Select(m =>
             {
-                var node = new TreeResultModel<string, DictItemTreeResultModel>
+                var node = new TreeResultModel<int, DictItemTreeResultModel>
                 {
-                    Id = m.Value,
+                    Id = m.Id,
                     Label = m.Name,
-                    Item = new DictItemTreeResultModel
-                    {
-                        Id = m.Id,
-                        Name = m.Name,
-                        Extend = m.Extend,
-                        Icon = m.Icon,
-                        Level = m.Level,
-                        ParentId = m.ParentId,
-                        Sort = m.Sort,
-                        Value = m.Value
-                    }
+                    Value = m.Value,
+                    Item = _mapper.Map<DictItemTreeResultModel>(m),
+                    Children = ResolveTree(all, m.Id)
                 };
-                node.Item.IdList.AddRange(parent.Item.IdList);
-                node.Item.IdList.Add(m.Value);
 
-                node.Path.AddRange(parent.Path);
-                node.Path.Add(node.Label);
-                node.Children = ResolveTree(all, node);
                 return node;
             }).ToList();
         }

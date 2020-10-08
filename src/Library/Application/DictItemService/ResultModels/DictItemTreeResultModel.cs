@@ -1,9 +1,10 @@
-﻿using System.Collections.Generic;
-
-namespace NetModular.Module.Common.Application.DictItemService.ResultModels
+﻿namespace NetModular.Module.Common.Application.DictItemService.ResultModels
 {
     public class DictItemTreeResultModel
     {
+        /// <summary>
+        /// 
+        /// </summary>
         public int Id { get; set; }
 
         /// <summary>
@@ -40,10 +41,5 @@ namespace NetModular.Module.Common.Application.DictItemService.ResultModels
         /// 级别
         /// </summary>
         public int Level { get; set; }
-
-        /// <summary>
-        /// 值集合
-        /// </summary>
-        public List<string> IdList { get; } = new List<string>();
     }
 }

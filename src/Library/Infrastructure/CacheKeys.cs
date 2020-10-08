@@ -1,4 +1,6 @@
-﻿namespace NetModular.Module.Common.Infrastructure
+﻿using System.ComponentModel;
+
+namespace NetModular.Module.Common.Infrastructure
 {
     /// <summary>
     /// 缓存键
@@ -6,18 +8,21 @@
     public static class CacheKeys
     {
         /// <summary>
-        /// 区划代码缓存
+        /// 区划代码
         /// </summary>
-        public const string Area = "COMMON_AREA";
+        [Description("区划代码")] 
+        public const string AREA = "COMMON:AREA";
 
         /// <summary>
-        /// 字典下拉列表缓存
+        /// 字典下拉列表
         /// </summary>
-        public const string DictSelect = "COMMON_DICT_SELECT_{0}_{1}";
+        [Description("字典下拉列表")]
+        public const string DICT_SELECT = "COMMON:DICT:SELECT";
 
         /// <summary>
-        /// 字典树形缓存
+        /// 字典树
         /// </summary>
-        public const string DictTree = "COMMON_DICT_TREE_{0}_{1}";
+        [Description("字典树")]
+        public const string DICT_TREE = "COMMON:DICT:TREE";
     }
 }

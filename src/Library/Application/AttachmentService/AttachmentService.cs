@@ -2,9 +2,8 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using AutoMapper;
-using Microsoft.Extensions.Options;
-using NetModular.Lib.Utils.Core.Extensions;
-using NetModular.Lib.Utils.Core.Options;
+using NetModular.Lib.Config.Abstractions;
+using NetModular.Lib.Config.Abstractions.Impl;
 using NetModular.Lib.Utils.Core.Result;
 using NetModular.Module.Common.Application.AttachmentService.ResultModels;
 using NetModular.Module.Common.Application.AttachmentService.ViewModels;
@@ -19,21 +18,21 @@ namespace NetModular.Module.Common.Application.AttachmentService
 {
     public class AttachmentService : IAttachmentService
     {
-        private readonly ModuleCommonOptions _moduleCommonOptions;
         private readonly IMapper _mapper;
         private readonly IAttachmentRepository _repository;
         private readonly IAttachmentOwnerRepository _ownerRepository;
         private readonly IMediaTypeRepository _mediaTypeRepository;
         private readonly CommonDbContext _dbContext;
+        private readonly IConfigProvider _configProvider;
 
-        public AttachmentService(IAttachmentRepository repository, IAttachmentOwnerRepository ownerRepository, IOptionsMonitor<ModuleCommonOptions> moduleCommonOptionsMonitor, IMediaTypeRepository mediaTypeRepository, IMapper mapper, CommonDbContext dbContext)
+        public AttachmentService(IAttachmentRepository repository, IAttachmentOwnerRepository ownerRepository, IMediaTypeRepository mediaTypeRepository, IMapper mapper, CommonDbContext dbContext, IConfigProvider configProvider)
         {
             _repository = repository;
             _ownerRepository = ownerRepository;
-            _moduleCommonOptions = moduleCommonOptionsMonitor.CurrentValue;
             _mediaTypeRepository = mediaTypeRepository;
             _mapper = mapper;
             _dbContext = dbContext;
+            _configProvider = configProvider;
         }
 
         public async Task<IResultModel> Query(AttachmentQueryModel model)
@@ -44,26 +43,6 @@ namespace NetModular.Module.Common.Application.AttachmentService
                 Total = model.TotalCount
             };
             return ResultModel.Success(result);
-        }
-
-        /// <summary>
-        /// 删除
-        /// </summary>
-        /// <param name="id"></param>
-        /// <returns></returns>
-        public async Task<IResultModel> Delete(Guid id)
-        {
-            var entity = await _repository.GetAsync(id);
-            if (entity == null)
-                return ResultModel.NotExists;
-
-            if (await _repository.DeleteAsync(id))
-            {
-
-                return ResultModel.Success();
-            }
-
-            return ResultModel.Failed();
         }
 
         public async Task<IResultModel<AttachmentUploadResultModel>> Upload(AttachmentUploadModel model, FileInfo fileInfo)
@@ -129,7 +108,8 @@ namespace NetModular.Module.Common.Application.AttachmentService
                 }
             }
 
-            var filePath = Path.Combine(_moduleCommonOptions.UploadPath, attachment.FullPath);
+            var config = _configProvider.Get<PathConfig>();
+            var filePath = Path.Combine(config.UploadPath, attachment.FullPath);
             if (!File.Exists(filePath))
                 return result.Failed("附件不存在");
 

@@ -3,13 +3,11 @@ using System.Threading.Tasks;
 using AutoMapper;
 using NetModular.Lib.Cache.Abstractions;
 using NetModular.Lib.Data.Abstractions;
-using NetModular.Lib.Utils.Core.Extensions;
-using NetModular.Lib.Utils.Core.Result;
 using NetModular.Module.Common.Application.AreaService.ViewModels;
 using NetModular.Module.Common.Domain.Area;
 using NetModular.Module.Common.Domain.Area.Models;
 using NetModular.Module.Common.Infrastructure;
-using NetModular.Module.Common.Infrastructure.AreaCrawling;
+using NetModular.Module.Common.Infrastructure.AreaCrawlingHandler;
 using NetModular.Module.Common.Infrastructure.Repositories;
 
 namespace NetModular.Module.Common.Application.AreaService
@@ -91,13 +89,14 @@ namespace NetModular.Module.Common.Application.AreaService
             {
                 return ResultModel.HasExists;
             }
-
+            
             entity.Pinyin = NPinyin.Pinyin.GetPinyin(entity.Name);
             entity.Jianpin = NPinyin.Pinyin.GetInitials(entity.Name);
 
             if (await _repository.UpdateAsync(entity))
             {
                 await ClearCache(entity);
+                return ResultModel.Success();
             }
 
             return ResultModel.Failed();
@@ -136,7 +135,7 @@ namespace NetModular.Module.Common.Application.AreaService
         public async Task<IResultModel<IList<AreaEntity>>> QueryChildren(string parentCode)
         {
             var result = new ResultModel<IList<AreaEntity>>();
-            var cacheKey = CacheKeys.Area + parentCode;
+            var cacheKey = CacheKeys.AREA + parentCode;
             if (!_cache.TryGetValue(cacheKey, out IList<AreaEntity> list))
             {
                 var parentId = 0;
@@ -163,7 +162,7 @@ namespace NetModular.Module.Common.Application.AreaService
                 var parent = await _repository.GetAsync(entity.ParentId);
                 if (parent != null)
                 {
-                    await _cache.RemoveAsync(CacheKeys.Area + parent.Code);
+                    await _cache.RemoveAsync(CacheKeys.AREA + parent.Code);
                 }
             }
         }

@@ -1,5 +1,5 @@
 <template>
-  <nm-box page header refresh title="结构预览" icon="menu" @refresh="refresh">
+  <nm-box page header title="字典结构" icon="tree">
     <el-tree class="nm-tree" ref="tree" v-bind="tree" v-on="on">
       <span slot-scope="{ data }">
         <nm-icon :name="data.item.icon || 'attachment'" />
@@ -18,9 +18,9 @@ export default {
         nodeKey: 'id',
         highlightCurrent: true,
         props: { children: 'children', label: 'label' },
-        currentNodeKey: '',
+        currentNodeKey: 0,
         expandOnClickNode: false,
-        defaultExpandedKeys: ['']
+        defaultExpandedKeys: [0]
       },
       on: {
         'current-change': this.onChange,
@@ -92,7 +92,6 @@ export default {
     },
     /**删除 */
     remove(id) {
-      console.log(id)
       let children = this.selection.children
       for (let i = 0; i < children.length; i++) {
         let child = children[i]

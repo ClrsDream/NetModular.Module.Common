@@ -1,14 +1,14 @@
 ﻿using System.Threading.Tasks;
 using AutoMapper;
-using Microsoft.Extensions.Options;
 using NetModular.Lib.Cache.Abstractions;
-using NetModular.Lib.Utils.Core.Extensions;
-using NetModular.Lib.Utils.Core.Result;
+using NetModular.Lib.Config.Abstractions;
 using NetModular.Module.Common.Application.DictItemService.ViewModels;
 using NetModular.Module.Common.Domain.DictItem;
 using NetModular.Module.Common.Domain.DictItem.Models;
 using NetModular.Module.Common.Infrastructure;
-using NetModular.Module.Common.Infrastructure.Options;
+using NetModular.Module.Common.Infrastructure.DictNoticeProvider;
+using NetModular.Module.Common.Infrastructure.DictSyncProvider;
+using Newtonsoft.Json;
 
 namespace NetModular.Module.Common.Application.DictItemService
 {
@@ -16,15 +16,18 @@ namespace NetModular.Module.Common.Application.DictItemService
     {
         private readonly IMapper _mapper;
         private readonly IDictItemRepository _repository;
-        private readonly CommonOptions _options;
         private readonly ICacheHandler _cacheHandler;
-
-        public DictItemService(IDictItemRepository repository, IMapper mapper, IOptionsMonitor<CommonOptions> optionsMonitor, ICacheHandler cacheHandler)
+        private readonly IDictItemNoticeProvider _noticeProvider;
+        private readonly IConfigProvider _configProvider;
+        private readonly IDictSyncProvider _dictNameSyncProvider;
+        public DictItemService(IDictItemRepository repository, IMapper mapper, ICacheHandler cacheHandler, IDictItemNoticeProvider noticeProvider, IConfigProvider configProvider, IDictSyncProvider dictNameSyncProvider)
         {
             _repository = repository;
             _mapper = mapper;
-            _options = optionsMonitor.CurrentValue;
             _cacheHandler = cacheHandler;
+            _noticeProvider = noticeProvider;
+            _configProvider = configProvider;
+            _dictNameSyncProvider = dictNameSyncProvider;
         }
 
         public async Task<IResultModel> Query(DictItemQueryModel model)
@@ -84,6 +87,8 @@ namespace NetModular.Module.Common.Application.DictItemService
             var result = await _repository.DeleteAsync(id);
             if (result)
             {
+                _noticeProvider.DeleteNotice(entity);
+
                 await ClearCache(entity.GroupCode, entity.DictCode);
             }
             return ResultModel.Result(result);
@@ -105,6 +110,9 @@ namespace NetModular.Module.Common.Application.DictItemService
             if (entity == null)
                 return ResultModel.NotExists;
 
+            //通过JSON序列号深拷贝
+            var oldEntity = JsonConvert.DeserializeObject<DictItemEntity>(JsonConvert.SerializeObject(entity));
+
             _mapper.Map(model, entity);
 
             if (await _repository.Exists(entity))
@@ -115,6 +123,9 @@ namespace NetModular.Module.Common.Application.DictItemService
             var result = await _repository.UpdateAsync(entity);
             if (result)
             {
+
+                await _dictNameSyncProvider.Sync(entity, oldEntity);
+                _noticeProvider.ChangeNotice(entity, oldEntity);
                 await ClearCache(entity.GroupCode, entity.DictCode);
             }
             return ResultModel.Result(result);
@@ -122,10 +133,11 @@ namespace NetModular.Module.Common.Application.DictItemService
 
         private async Task ClearCache(string group, string code)
         {
-            if (_options.DictCacheEnabled)
+            var config = _configProvider.Get<CommonConfig>();
+            if (config.DictCacheEnabled)
             {
-                var selectKey = string.Format(CacheKeys.DictSelect, group.ToUpper(), code.ToUpper());
-                var treeKey = string.Format(CacheKeys.DictTree, group.ToUpper(), code.ToUpper());
+                var selectKey = $"{CacheKeys.DICT_SELECT}:{group.ToUpper()}_{code.ToUpper()}";
+                var treeKey = $"{CacheKeys.DICT_TREE}:{group.ToUpper()}_{code.ToUpper()}";
                 await _cacheHandler.RemoveAsync(selectKey);
                 await _cacheHandler.RemoveAsync(treeKey);
             }

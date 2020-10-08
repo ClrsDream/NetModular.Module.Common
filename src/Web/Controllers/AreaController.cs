@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NetModular.Lib.Auth.Web.Attributes;
-using NetModular.Lib.Utils.Core.Result;
 using NetModular.Module.Common.Application.AreaService;
 using NetModular.Module.Common.Application.AreaService.ViewModels;
 using NetModular.Module.Common.Domain.Area;
@@ -38,16 +37,16 @@ namespace NetModular.Module.Common.Web.Controllers
 
         [HttpDelete]
         [Description("删除")]
-        public async Task<IResultModel> Delete([BindRequired] int id)
+        public Task<IResultModel> Delete([BindRequired] int id)
         {
-            return await _service.Delete(id);
+            return _service.Delete(id);
         }
 
         [HttpGet]
         [Description("编辑")]
-        public async Task<IResultModel> Edit([BindRequired] int id)
+        public Task<IResultModel> Edit([BindRequired] int id)
         {
-            return await _service.Edit(id);
+            return _service.Edit(id);
         }
 
         [HttpPost]
